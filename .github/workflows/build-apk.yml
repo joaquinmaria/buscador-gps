@@ -23,17 +23,62 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          api-levels: '34'
+          build-tools: '34.0.0'
 
-      - name: Install Android SDK components
+      - name: Install Android SDK components (robust)
+        shell: bash
         run: |
-          yes | "$ANDROID_HOME"/cmdline-tools/latest/bin/sdkmanager --licenses
-          "$ANDROID_HOME"/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          # Determine SDK root (prefer ANDROID_SDK_ROOT, fallback to ANDROID_HOME, then default)
+          if [ -n "$ANDROID_SDK_ROOT" ]; then
+            SDK_ROOT="$ANDROID_SDK_ROOT"
+          elif [ -n "$ANDROID_HOME" ]; then
+            SDK_ROOT="$ANDROID_HOME"
+          else
+            SDK_ROOT="$HOME/Android/Sdk"
+          fi
+          echo "Using SDK root: $SDK_ROOT"
+
+          CMD="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+
+          # If sdkmanager not present at expected path, try other common locations or PATH
+          if [ ! -x "$CMD" ]; then
+            echo "cmdline-tools/latest sdkmanager not found at $CMD"
+            echo "Attempting fallback locations..."
+            if [ -x "$SDK_ROOT/tools/bin/sdkmanager" ]; then
+              CMD="$SDK_ROOT/tools/bin/sdkmanager"
+              echo "Found sdkmanager at $CMD"
+            else
+              CMD="$(command -v sdkmanager || true)"
+              if [ -n "$CMD" ]; then
+                echo "Found sdkmanager in PATH: $CMD"
+              else
+                echo "sdkmanager not found; ensure setup-android provided cmdline-tools"
+                ls -la "$SDK_ROOT" || true
+                exit 1
+              fi
+            fi
+          fi
+
+          # Print version for debugging
+          echo "sdkmanager location: $CMD"
+          "$CMD" --version || true
+
+          # Install packages (include cmdline-tools;latest) and accept licenses, always pass explicit --sdk_root
+          yes | "$CMD" --sdk_root="$SDK_ROOT" --install "cmdline-tools;latest" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+          # Accept licenses explicitly against same SDK root
+          yes | "$CMD" --sdk_root="$SDK_ROOT" --licenses || true
+
+          # Debug listing of SDK root
+          ls -la "$SDK_ROOT" || true
 
       - name: Build debug APK
         working-directory: ./RutaFinder
         run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
