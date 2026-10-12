@@ -1,0 +1,1 @@
+<resources><style name="Theme.RutaFinder" parent="Theme.MaterialComponents.DayNight.NoActionBar"><item name="android:fontFamily">sans</item><item name="colorPrimary">#1B5E20</item><item name="colorAccent">#FF6F00</item></style></resources>
