@@ -42,17 +42,39 @@ jobs:
             platforms;android-34
             build-tools;34.0.0
 
-      - name: Verify Android SDK (debug)
+      - name: Accept Android SDK licenses and update sdkmanager
         shell: bash
         run: |
-          echo "ANDROID_SDK_ROOT = $ANDROID_SDK_ROOT"
-          echo "ANDROID_HOME = $ANDROID_HOME"
-          if [ -x "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
-            "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --version || true
-            "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_SDK_ROOT" --list || true
+          set -euo pipefail
+
+          # Determine SDK root (prefer ANDROID_SDK_ROOT, fallback to ANDROID_HOME, then default)
+          SDKROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
+          echo "Using SDK root: $SDKROOT"
+
+          # Prefer cmdline-tools/latest; otherwise find first sdkmanager on disk
+          SDKMANAGER="$SDKROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            echo "sdkmanager not found at $SDKMANAGER, searching for any sdkmanager under $SDKROOT..."
+            SDKMANAGER="$(find "$SDKROOT" -type f -name sdkmanager 2>/dev/null | head -n1 || true)"
+          fi
+
+          echo "Using sdkmanager: ${SDKMANAGER:-<not found>}"
+
+          if [ -n "$SDKMANAGER" ] && [ -x "$SDKMANAGER" ]; then
+            # Print version for debugging
+            "$SDKMANAGER" --version || true
+
+            # Non-interactively accept licenses and update sdkmanager against the explicit SDK root
+            yes | "$SDKMANAGER" --sdk_root="$SDKROOT" --licenses || true
+            yes | "$SDKMANAGER" --sdk_root="$SDKROOT" --update || true
+
+            # Optional: install legacy 'tools' package if some component still requires it (uncomment if needed)
+            # yes | "$SDKMANAGER" --sdk_root="$SDKROOT" "tools" || true
+
           else
-            echo "cmdline-tools/latest sdkmanager not present; listing $ANDROID_SDK_ROOT:"
-            ls -la "$ANDROID_SDK_ROOT" || true
+            echo "sdkmanager not found under ANDROID SDK root; listing $SDKROOT for debugging:"
+            ls -la "$SDKROOT" || true
+            exit 1
           fi
 
       - name: Build debug APK
